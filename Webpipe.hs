@@ -2,13 +2,15 @@
 
 module Main where
 
-import qualified Data.ByteString.Char8 as B
+import Data.ByteString
 import qualified Data.ByteString.Lazy as BL
 
 import Data.Conduit
-import Control.Monad.IO.Class
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.List as CL
+
+import Control.Concurrent.Async
+import Control.Monad.IO.Class
 
 import System.IO (stdin)
 
@@ -17,25 +19,36 @@ import Network.Wai
 import Network.HTTP.Types (status200)
 import Network.Wai.Handler.Warp (run)
 
--- websockets
-import Control.Monad (forever)
-import qualified Data.Text as T
-import qualified Network.WebSockets as WS
+-- -- websockets
+-- import Control.Monad (forever)
+-- import qualified Data.Text as T
+-- import qualified Network.WebSockets as WS
 
-stdinSrc :: Source IO B.ByteString
+stdinSrc :: Source IO ByteString
 stdinSrc = CB.sourceHandle stdin
 
-conduit :: Conduit B.ByteString IO B.ByteString
-conduit = CL.map id
+runHttpServer :: ByteString -> IO (Async ())
+runHttpServer = async . run 3000 . mkHttpApp
 
--- stdoutSink :: Sink String IO ()
--- stdoutSink = awaitForever $ liftIO . putStrLn
-
-svrSink :: Sink B.ByteString IO ()
-svrSink = CL.mapM_ $ \f -> run 3000 (mkApp f)
-
-mkApp resp = \_ respond -> respond $
+mkHttpApp :: ByteString -> Application
+mkHttpApp resp _ respond = respond $
    responseLBS status200 [("Content-Type", "text/html")] (BL.fromStrict resp)
 
-main :: IO ()
-main = stdinSrc $$ CB.lines =$ conduit =$ svrSink
+serveWeb :: Conduit ByteString IO (ByteString, Async ())
+serveWeb = await >>= maybe (return ()) f
+   where
+      f = (g =<<) . liftIO . runHttpServer
+      g = CL.mapM . (return .) . flip (,)
+
+printLog :: Conduit (ByteString, Async ()) IO (IO(), Async ())
+printLog = CL.mapM f where f (x, y) = return (print x, y)
+
+waitSink :: Consumer (t, Async ()) IO (Async ())
+waitSink = await >>= maybe waitSink f where f (_, a) = return a
+
+process :: IO (Async ())
+process = stdinSrc =$= CB.lines =$= serveWeb =$= printLog $$ waitSink
+
+-- main :: IO ()
+--main = process >>= wait
+main = stdinSrc =$= CB.lines =$= serveWeb =$= printLog $$ CL.take 10000
