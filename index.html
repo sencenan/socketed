@@ -6,13 +6,28 @@
 	<body>
 		<pre id="pre"></pre>
 		<script>
-			var
-				socket = new WebSocket("ws://127.0.0.1:3000"),
-				e = document.getElementById('pre');
+			var e = document.getElementById('pre');
 
-			socket.onmessage = function(event) {
-				e.textContent += event.data + '\n';
-			}
+			var connect = function(linesToDrop) {
+				var
+					lineDropped = 0,
+					socket = new WebSocket("ws://127.0.0.1:3000");
+
+				socket.onclose = function(e) {
+					console.log('socket closed: ', e);
+					setTimeout(function() { connect(linesToDrop) }, 5000);
+				};
+
+				socket.onmessage = function(event) {
+					if (++lineDropped > linesToDrop) {
+						e.textContent += event.data + '\n';
+					} else {
+						console.log('drops: ', event.data)
+					}
+				};
+			};
+
+			connect(0);
 		</script>
 	</body>
 </html>

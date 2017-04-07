@@ -33,7 +33,8 @@ executable webpipe
     wai-websockets >= 3.0.1.1,
     stm >= 2.4.4.1,
     stm-chans >= 3.0.0.4,
-    stm-conduit >= 3.0.0
+    stm-conduit >= 3.0.0,
+    optparse-applicative == 0.13.2.0
   -- hs-source-dirs:
   default-language: Haskell2010
   ghc-options: -threaded
