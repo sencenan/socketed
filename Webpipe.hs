@@ -2,53 +2,54 @@
 
 module Main where
 
-import Data.ByteString
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
+import Data.Void (Void)
+import Data.Text (Text)
 
-import Data.Conduit
+import Conduit (ConduitM, MonadIO, runConduit, mapM_C, sourceHandle, (.|))
+import Data.Conduit.TMChan (TMChan, sinkTMChan, dupTMChan, sourceTMChan)
 import qualified Data.Conduit.Binary as CB
-import qualified Data.Conduit.List as CL
 
-import Control.Concurrent.Async
-import Control.Monad.IO.Class
+import Control.Concurrent.Async (async, wait)
+import Control.Concurrent.STM (atomically)
+import Control.Concurrent.STM.TMChan (newBroadcastTMChanIO)
 
 import System.IO (stdin)
 
 -- html/warp
-import Network.Wai
+import Network.Wai (Application, responseLBS)
 import Network.HTTP.Types (status200)
 import Network.Wai.Handler.Warp (run)
+import Network.Wai.Handler.WebSockets (websocketsOr)
 
--- -- websockets
--- import Control.Monad (forever)
--- import qualified Data.Text as T
--- import qualified Network.WebSockets as WS
+-- websockets
+import Network.WebSockets (
+      ServerApp,
+      acceptRequest, defaultConnectionOptions, sendTextData
+   )
 
-stdinSrc :: Source IO ByteString
-stdinSrc = CB.sourceHandle stdin
-
-runHttpServer :: ByteString -> IO (Async ())
-runHttpServer = async . run 3000 . mkHttpApp
-
-mkHttpApp :: ByteString -> Application
-mkHttpApp resp _ respond = respond $
-   responseLBS status200 [("Content-Type", "text/html")] (BL.fromStrict resp)
-
-serveWeb :: Conduit ByteString IO (ByteString, Async ())
-serveWeb = await >>= maybe (return ()) f
+mkApp :: TMChan ByteString -> Application
+mkApp broadcastChan = websocketsOr defaultConnectionOptions wsApp backupApp
    where
-      f = (g =<<) . liftIO . runHttpServer
-      g = CL.mapM . (return .) . flip (,)
+      wsApp :: ServerApp
+      wsApp pending_conn = do
+         conn <- acceptRequest pending_conn
+         chan <- atomically $ dupTMChan broadcastChan
+         runConduit $ sourceTMChan chan .| CB.lines .| mapM_C (sendTextData conn)
 
-printLog :: Conduit (ByteString, Async ()) IO (IO(), Async ())
-printLog = CL.mapM f where f (x, y) = return (print x, y)
+      backupApp :: Application
+      backupApp _ respond = respond $ responseLBS status200 [] "Not a WebSocket request"
 
-waitSink :: Consumer (t, Async ()) IO (Async ())
-waitSink = await >>= maybe waitSink f where f (_, a) = return a
+sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
+sinkStdinToChan = (sourceHandle stdin .|) . flip sinkTMChan True
 
-process :: IO (Async ())
-process = stdinSrc =$= CB.lines =$= serveWeb =$= printLog $$ waitSink
-
--- main :: IO ()
---main = process >>= wait
-main = stdinSrc =$= CB.lines =$= serveWeb =$= printLog $$ CL.take 10000
+-- missing initial data from the stdin
+main :: IO ()
+main = do
+   chan <- newBroadcastTMChanIO
+   a <- async . runConduit $ sinkStdinToChan chan
+   app <- return $ mkApp chan
+   putStrLn "Starting at 3000"
+   run 3000 app
+   wait a

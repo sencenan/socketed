@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Testing page for websockets</title>
+	</head>
+	<body>
+		<pre id="pre"></pre>
+		<script>
+			var
+				socket = new WebSocket("ws://127.0.0.1:3000"),
+				e = document.getElementById('pre');
+
+			socket.onmessage = function(event) {
+				e.textContent += event.data + '\n';
+			}
+		</script>
+	</body>
+</html>
