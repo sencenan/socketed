@@ -1,4 +1,4 @@
-name: webpipe
+name: socketed
 version: 0.1.0.0
 
 synopsis: simpe tool to serve piped data over http and websocket
@@ -15,8 +15,9 @@ build-type: Simple
 extra-source-files: ChangeLog.md
 cabal-version: >=1.10
 
-executable webpipe
-  main-is: Webpipe.hs
+executable socketed
+  main-is: Main.hs
+  -- hs-source-dirs:
   -- other-modules:
   -- other-extensions:
   build-depends:
@@ -35,6 +36,5 @@ executable webpipe
     stm-chans >= 3.0.0.4,
     stm-conduit >= 3.0.0,
     optparse-applicative == 0.13.2.0
-  -- hs-source-dirs:
   default-language: Haskell2010
   ghc-options: -threaded
