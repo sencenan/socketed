@@ -12,7 +12,7 @@ params = SocketedOptions
       <> Opt.short 'l'
       <> Opt.help "number of lines to replay on client connect"
       <> Opt.showDefault
-      <> Opt.value 1
+      <> Opt.value 0
       <> Opt.metavar "INT" )
    <*> Opt.option Opt.auto
       ( Opt.long "port"

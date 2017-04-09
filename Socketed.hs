@@ -67,9 +67,8 @@ settings (SocketedOptions _ port host) = setHost (read hoststr)
    $ defaultSettings
       where hoststr = "Host \"" ++ host ++ "\""
 
-printHost :: SocketedOptions -> IO ()
-printHost (SocketedOptions _ port host) = putStrLn
-   $ "ws://" ++ host ++ ":" ++ show port
+showHost :: SocketedOptions -> String
+showHost (SocketedOptions _ port host) = "ws://" ++ host ++ ":" ++ show port
 
 replayedLines :: SocketedOptions -> IO [ByteString]
 replayedLines (SocketedOptions replayAmount _ _) = runConduit
@@ -81,39 +80,62 @@ runSocketedServer opts = do
    chan <- newBroadcastTMChanIO
    async . runConduit $ sinkStdinToChan chan
    app <- return $ socketedApp rls (backupkHtml opts) chan
-   printHost opts
+   putStrLn $ showHost opts
    runSettings (settings opts) app
 
 backupkHtml :: SocketedOptions -> ByteString
-backupkHtml (SocketedOptions replayAmount port _) = pack $ unlines [
-      "<!DOCTYPE html><html><body>",
-      "      <pre id='pre'></pre>",
-      "      <script>",
-      "         var e = document.getElementById('pre');",
+backupkHtml opts@(SocketedOptions replayAmount _ _) = pack $ unlines [
+      "<!DOCTYPE html><html><body><script>",
+      "(function(host, linesToDrop) {",
+      "  window.handleMessage = function(event) {",
+      "     eval(event.data);",
+      "  };",
       "",
-      "         var connect = function(linesToDrop) {",
-      "            var",
-      "               lineDropped = 0,",
-      "               socket = new WebSocket('ws://127.0.0.1:"
-         ++ show port ++ "');",
+      "  window.handleMessageError = function(event, error) {",
+      "     var c = document.createElement('div');",
+      "     c.textContent = 'failed to eval: '+ event.data;",
+      "     window.document.body.appendChild(c);",
+      "  };",
       "",
-      "            socket.onclose = function(e) {",
-      "               console.log('socket closed: ', e);",
-      "               setTimeout(function() { connect( "
-         ++ show replayAmount ++ " ) }, 5000);",
-      "            };",
+      "  var retryCount;",
       "",
-      "            socket.onmessage = function(event) {",
-      "               if (lineDropped >= linesToDrop) {",
-      "                  e.textContent += event.data + '\\n';",
-      "               } else {",
-      "                  lineDropped += 1;",
-      "                  console.log('drops replayed line: ', event.data);",
-      "               }",
-      "            };",
-      "         };",
+      "  var connect = function(l) {",
+      "     var",
+      "        lineDropped = 0,",
+      "        socket = new WebSocket(host);",
       "",
-      "         connect(0);",
-      "      </script>",
-      "</body></html>"
+      "     socket.onopen = function(e) {",
+      "        console.log('connected');",
+      "        retryCount = 0;",
+      "     };",
+      "",
+      "     socket.onclose = function(e) {",
+      "        console.log('socket closed: ', e);",
+      "",
+      "        if (++retryCount > 20) {",
+      "           window.document.body.textContent = 'disconnected...';",
+      "        } else {",
+      "           setTimeout(function() {",
+      "              console.log('reconnecting...');",
+      "              connect(l);",
+      "           }, 2000);",
+      "        }",
+      "     };",
+      "",
+      "     socket.onmessage = function(event) {",
+      "        if (++lineDropped > linesToDrop) {",
+      "           try {",
+      "              window.handleMessage(event);",
+      "           } catch(error) {",
+      "              window.handleMessageError(event, error);",
+      "           }",
+      "        } else {",
+      "           console.log('drops: ', event.data)",
+      "        }",
+      "     };",
+      "  };",
+      "",
+      "  connect(0);",
+      "})('" ++ showHost opts ++ "', " ++ show replayAmount ++ ");",
+      "</script></body></html>"
    ]
