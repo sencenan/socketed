@@ -3,7 +3,7 @@ module Main where
 import Data.Semigroup ((<>))
 import qualified Options.Applicative as Opt
 
-import Socketed (SocketedOptions(..), runSocketedServer)
+import Network.Socketed (SocketedOptions(..), runSocketedServer)
 
 params :: Opt.Parser SocketedOptions
 params = SocketedOptions

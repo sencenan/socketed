@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main where
+module Network.Socketed.Application.Ficketed (
+      runFicketedServer
+   ) where
 
 import Data.ByteString (ByteString, isPrefixOf)
 import Data.ByteString.Lazy (toStrict)
@@ -70,7 +72,7 @@ wrap app req respond = app req f where
                wb $ respond . responseStream s hs . rewrite
          | otherwise -> respond res
 
-main :: IO ()
-main = do
+runFicketedServer :: IO ()
+runFicketedServer = do
    pwd <- getCurrentDirectory
    run 8080 $ wrap $ staticApp (defaultFileServerSettings pwd)

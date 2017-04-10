@@ -1,4 +1,4 @@
-module Socketed (
+module Network.Socketed (
       SocketedOptions(..), runSocketedServer
    ) where
 
