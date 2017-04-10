@@ -18,14 +18,12 @@ import Data.ByteString.Char8 (pack)
 import Data.ByteString.Lazy (fromStrict)
 import Data.Void (Void)
 
-import Data.Conduit.TMChan (TMChan, sinkTMChan, dupTMChan, sourceTMChan)
-
 import System.IO (stdin)
 
 import Network.Wai (Application, responseLBS)
 import Network.HTTP.Types (status200)
 import Network.Wai.Handler.Warp (
-      HostPreference, Settings,
+      Settings,
       defaultSettings, setPort, setHost, runSettings
    )
 import Network.Wai.Handler.WebSockets (websocketsOr)
@@ -42,7 +40,7 @@ data SocketedOptions = SocketedOptions {
    }
 
 stdinLines :: MonadIO m => ConduitM a ByteString m ()
-stdinLines = (sourceHandle stdin) .| CB.lines
+stdinLines = sourceHandle stdin .| CB.lines
 
 sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
 sinkStdinToChan = (stdinLines .|) . flip sinkTMChan False
@@ -54,7 +52,7 @@ socketedApp rls html broadcastChan
       wsApp pendingConn = do
          conn <- acceptRequest pendingConn
          chan <- atomically $ dupTMChan broadcastChan
-         mapM (sendTextData conn) rls -- send replayed lines
+         _ <- mapM (sendTextData conn) rls -- send replayed lines
          runConduit $ sourceTMChan chan .| mapM_C (sendTextData conn)
 
       backupApp :: Application
@@ -62,29 +60,28 @@ socketedApp rls html broadcastChan
          $ responseLBS status200 [] (fromStrict html)
 
 settings :: SocketedOptions -> Settings
-settings (SocketedOptions _ port host) = setHost (read hoststr)
-   $ setPort port
-   $ defaultSettings
-      where hoststr = "Host \"" ++ host ++ "\""
+settings (SocketedOptions _ p h) = setHost (read hoststr)
+   $ setPort p defaultSettings
+      where hoststr = "Host \"" ++ h ++ "\""
 
 showHost :: SocketedOptions -> String
-showHost (SocketedOptions _ port host) = "ws://" ++ host ++ ":" ++ show port
+showHost (SocketedOptions _ p h) = "ws://" ++ h ++ ":" ++ show p
 
 replayedLines :: SocketedOptions -> IO [ByteString]
-replayedLines (SocketedOptions replayAmount _ _) = runConduit
-   $ stdinLines .| takeExactlyC replayAmount sinkList
+replayedLines (SocketedOptions r _ _) = runConduit
+   $ stdinLines .| takeExactlyC r sinkList
 
 runSocketedServer :: SocketedOptions -> IO ()
 runSocketedServer opts = do
    rls <- replayedLines opts
    chan <- newBroadcastTMChanIO
-   async . runConduit $ sinkStdinToChan chan
-   app <- return $ socketedApp rls (backupkHtml opts) chan
-   putStrLn $ showHost opts
+   _ <- async . runConduit $ sinkStdinToChan chan
+   let app = socketedApp rls (backupkHtml opts) chan
+   _ <- putStrLn $ showHost opts
    runSettings (settings opts) app
 
 backupkHtml :: SocketedOptions -> ByteString
-backupkHtml opts@(SocketedOptions replayAmount _ _) = pack $ unlines [
+backupkHtml opts@(SocketedOptions r _ _) = pack $ unlines [
       "<!DOCTYPE html><html><body><script>",
       "(function(host, linesToDrop) {",
       "  window.handleMessage = function(event) {",
@@ -136,6 +133,6 @@ backupkHtml opts@(SocketedOptions replayAmount _ _) = pack $ unlines [
       "  };",
       "",
       "  connect(0);",
-      "})('" ++ showHost opts ++ "', " ++ show replayAmount ++ ");",
+      "})('" ++ showHost opts ++ "', " ++ show r ++ ");",
       "</script></body></html>"
    ]

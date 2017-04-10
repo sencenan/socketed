@@ -22,7 +22,7 @@ import System.IO (stdin, stdout)
 --       pack $ str ++ "<script>console.log('wha wha??')</script>"
 --    )
 
--- render = renderHtml $ markdown def { msXssPrxotect = False }
+-- render = withFile file ReadMode renderHtml $ markdown def $ hGetContents
 
 main :: IO ()
 main = runConduitRes
