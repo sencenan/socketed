@@ -20,8 +20,8 @@ import Data.Void (Void)
 
 import System.IO (stdin)
 
-import Network.Wai (Application, responseLBS)
 import Network.HTTP.Types (status200)
+import Network.Wai (Application, responseLBS)
 import Network.Wai.Handler.Warp (
       Settings,
       defaultSettings, setPort, setHost, runSettings

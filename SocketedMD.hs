@@ -2,37 +2,75 @@
 
 module Main where
 
-import Conduit (
-      ConduitM, MonadIO,
-      (.|), awaitForever, mapC, mapM_C, runConduitRes, liftIO, mapMC,
-      sourceHandle, sourceFileBS, stdoutC, runResourceT
+import Data.ByteString (ByteString, isPrefixOf)
+import Data.ByteString.Lazy (toStrict)
+import Data.Binary.Builder (
+      fromByteString, toLazyByteString, putStringUtf8
    )
-import qualified Data.Conduit.Binary as CB
+import Data.Text.Encoding (decodeUtf8)
 
-import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (append, unpack)
--- import Data.Text.Lazy (pack, unpack)
+import Network.Mime (defaultMimeLookup)
+import Network.HTTP.Types (Header)
 
-import Text.Blaze.Html.Renderer.Text (renderHtml)
-import Text.Markdown (def, markdown, msXssProtect)
+import Network.Wai (
+      Middleware, Response, StreamingBody,
+      mapResponseHeaders, responseToStream, responseStream, rawPathInfo
+   )
+import Network.Wai.Application.Static (defaultFileServerSettings, staticApp)
+import Network.Wai.Handler.Warp (run)
 
-import System.IO (stdin, stdout)
+import System.Directory (getCurrentDirectory)
 
--- render str = renderHtml $ markdown def { msXssPrxotect = False } (
---       pack $ str ++ "<script>console.log('wha wha??')</script>"
---    )
+import Text.Blaze.Html5 (text)
+import Text.Blaze.Html.Renderer.String (renderHtml)
 
--- render = withFile file ReadMode renderHtml $ markdown def $ hGetContents
+coerceHeaders :: Response -> Response
+coerceHeaders = mapResponseHeaders (map f)
+   where
+      f :: Header -> Header
+      f ("Content-Type", _) = ("Content-Type", "text/html")
+      f h = h
+
+rewriteHTML :: StreamingBody -> StreamingBody
+rewriteHTML sbody send flush
+   = sbody send flush
+   >> send (fromByteString "<script>console.log('here')</script>")
+   >> flush
+
+rewriteText :: StreamingBody -> StreamingBody
+rewriteText sbody send flush
+   = send (fromByteString "<pre>")
+   >> sbody
+      (send
+         . putStringUtf8
+         . renderHtml
+         . text
+         . decodeUtf8
+         . toStrict
+         . toLazyByteString)
+      flush
+   >> send (fromByteString "</pre>")
+   >> send (fromByteString "<script>console.log('here')</script>")
+   >> flush
+
+htmlMimes :: [ByteString]
+htmlMimes = ["text/html", "text/javascipt"]
+
+wrap :: Middleware
+wrap app req respond = app req f where
+   m = defaultMimeLookup . decodeUtf8 .rawPathInfo $ req
+   f res =
+      case () of
+      _
+         | "text/" `isPrefixOf` m ->
+            let
+               (s, hs, wb) = responseToStream . coerceHeaders $ res
+               rewrite = if m `elem` htmlMimes then rewriteHTML else rewriteText
+            in
+               wb $ respond . responseStream s hs . rewrite
+         | otherwise -> respond res
 
 main :: IO ()
-main = runConduitRes
-   $ sourceHandle stdin
-   .| CB.lines
-   .| mapC unpack
-   .| awaitForever sourceFileBS
-   .| CB.lines
-   .| mapC (flip append "\n")
-   .| mapM_C (liftIO . print)
-   -- .| mapM_C (\x -> (liftIO . print) x)
-   -- .| mapM_C (\x -> runResourceT $ (liftIO . print) x)
-   -- .| stdoutC
+main = do
+   pwd <- getCurrentDirectory
+   run 8080 $ wrap $ staticApp (defaultFileServerSettings pwd)
