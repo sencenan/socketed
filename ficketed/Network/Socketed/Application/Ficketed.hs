@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.Socketed.Application.Ficketed (
-      runFicketedServer
+      FicketedOptions(..), runFicketedServer
    ) where
 
 import Data.ByteString (ByteString, isPrefixOf)
@@ -10,6 +10,7 @@ import Data.Binary.Builder (
       fromByteString, toLazyByteString, putStringUtf8
    )
 import Data.Text.Encoding (decodeUtf8)
+import Data.Maybe (fromMaybe)
 
 import Network.Mime (defaultMimeLookup)
 import Network.HTTP.Types (Header)
@@ -25,6 +26,14 @@ import System.Directory (getCurrentDirectory)
 
 import Text.Blaze.Html5 (text)
 import Text.Blaze.Html.Renderer.String (renderHtml)
+
+data FicketedOptions = FicketedOptions {
+      dir :: Maybe String,
+      port :: Int,
+      host :: String,
+      wsPort :: Int,
+      wsHost :: String
+   }
 
 coerceHeaders :: Response -> Response
 coerceHeaders = mapResponseHeaders (map f)
@@ -72,7 +81,7 @@ wrap app req respond = app req f where
                wb $ respond . responseStream s hs . rewrite
          | otherwise -> respond res
 
-runFicketedServer :: IO ()
-runFicketedServer = do
+runFicketedServer :: FicketedOptions -> IO ()
+runFicketedServer (FicketedOptions d p _ _ _) = do
    pwd <- getCurrentDirectory
-   run 8080 $ wrap $ staticApp (defaultFileServerSettings pwd)
+   run p $ wrap $ staticApp (defaultFileServerSettings $ fromMaybe pwd d)

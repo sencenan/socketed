@@ -28,6 +28,7 @@ executable ficketed
     wai >= 3.2.1.1,
     wai-app-static >= 3.1.6.1,
     warp >= 3.2.11.1,
-    socketed >= 0.1.0.0
+    socketed >= 0.1.0.0,
+    optparse-applicative >= 0.13.2.0
   ghc-options: -threaded
   other-modules: Network.Socketed.Application.Ficketed
