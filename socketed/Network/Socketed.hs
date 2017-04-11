@@ -14,7 +14,6 @@ import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMChan (newBroadcastTMChanIO)
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (pack)
 import Data.ByteString.Lazy (fromStrict)
 import Data.Void (Void)
 
@@ -33,17 +32,22 @@ import Network.WebSockets (
       acceptRequest, defaultConnectionOptions, sendTextData
    )
 
-data SocketedOptions = SocketedOptions {
-      replayAmount :: Int,
-      port :: Int,
-      host :: String
-   }
+import Network.Socketed.Internal (SocketedOptions(..), showHost)
+import Network.Socketed.Template (evalHtml)
 
 stdinLines :: MonadIO m => ConduitM a ByteString m ()
 stdinLines = sourceHandle stdin .| CB.lines
 
 sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
 sinkStdinToChan = (stdinLines .|) . flip sinkTMChan False
+
+replayedLines :: SocketedOptions -> IO [ByteString]
+replayedLines (SocketedOptions r _ _) = runConduit
+   $ stdinLines .| takeExactlyC r sinkList
+
+serverSettings :: SocketedOptions -> Settings
+serverSettings (SocketedOptions _ p h) = setHost (read hoststr)
+   $ setPort p defaultSettings where hoststr = "Host \"" ++ h ++ "\""
 
 socketedApp :: [ByteString] -> ByteString -> TMChan ByteString -> Application
 socketedApp rls html broadcastChan
@@ -59,80 +63,11 @@ socketedApp rls html broadcastChan
       backupApp _ respond = respond
          $ responseLBS status200 [] (fromStrict html)
 
-settings :: SocketedOptions -> Settings
-settings (SocketedOptions _ p h) = setHost (read hoststr)
-   $ setPort p defaultSettings
-      where hoststr = "Host \"" ++ h ++ "\""
-
-showHost :: SocketedOptions -> String
-showHost (SocketedOptions _ p h) = "ws://" ++ h ++ ":" ++ show p
-
-replayedLines :: SocketedOptions -> IO [ByteString]
-replayedLines (SocketedOptions r _ _) = runConduit
-   $ stdinLines .| takeExactlyC r sinkList
-
 runSocketedServer :: SocketedOptions -> IO ()
 runSocketedServer opts = do
    rls <- replayedLines opts
    chan <- newBroadcastTMChanIO
    _ <- async . runConduit $ sinkStdinToChan chan
-   let app = socketedApp rls (backupkHtml opts) chan
+   let app = socketedApp rls (evalHtml opts) chan
    _ <- putStrLn $ showHost opts
-   runSettings (settings opts) app
-
-backupkHtml :: SocketedOptions -> ByteString
-backupkHtml opts@(SocketedOptions r _ _) = pack $ unlines [
-      "<!DOCTYPE html><html><body><script>",
-      "(function(host, linesToDrop) {",
-      "  window.handleMessage = function(event) {",
-      "     eval(event.data);",
-      "  };",
-      "",
-      "  window.handleMessageError = function(event, error) {",
-      "     var c = document.createElement('div');",
-      "     c.textContent = 'failed to eval: '+ event.data;",
-      "     window.document.body.appendChild(c);",
-      "  };",
-      "",
-      "  var retryCount;",
-      "",
-      "  var connect = function(l) {",
-      "     var",
-      "        lineDropped = 0,",
-      "        socket = new WebSocket(host);",
-      "",
-      "     socket.onopen = function(e) {",
-      "        console.log('connected');",
-      "        retryCount = 0;",
-      "     };",
-      "",
-      "     socket.onclose = function(e) {",
-      "        console.log('socket closed: ', e);",
-      "",
-      "        if (++retryCount > 20) {",
-      "           window.document.body.textContent = 'disconnected...';",
-      "        } else {",
-      "           setTimeout(function() {",
-      "              console.log('reconnecting...');",
-      "              connect(l);",
-      "           }, 2000);",
-      "        }",
-      "     };",
-      "",
-      "     socket.onmessage = function(event) {",
-      "        if (++lineDropped > linesToDrop) {",
-      "           try {",
-      "              window.handleMessage(event);",
-      "           } catch(error) {",
-      "              window.handleMessageError(event, error);",
-      "           }",
-      "        } else {",
-      "           console.log('drops: ', event.data)",
-      "        }",
-      "     };",
-      "  };",
-      "",
-      "  connect(0);",
-      "})('" ++ showHost opts ++ "', " ++ show r ++ ");",
-      "</script></body></html>"
-   ]
+   runSettings (serverSettings opts) app
