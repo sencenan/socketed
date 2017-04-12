@@ -1,25 +1,17 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module Network.Socketed.Template (evalHtml) where
+module Network.Socketed.Template (socketedScript, evalHtml) where
 
-import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (pack)
+import Data.List (intercalate)
 
-import Network.Socketed.Internal (SocketedOptions(..), showHost, stringQuote)
+import Network.Socketed.Internal (SocketedOptions(..), showWSHost, stringQuote)
 
-evalHtml :: SocketedOptions -> ByteString
-evalHtml opts@(SocketedOptions r _ _) = pack $ [stringQuote|
-   <!DOCTYPE html><html><body><script>
-   (function(host, linesToDrop) {
-      window.handleMessage = function(event) {
-         eval(event.data);
-      };
-
-      window.handleMessageError = function(event, error) {
-         var c = document.createElement('div');
-         c.textContent = 'failed to eval: '+ event.data;
-         window.document.body.appendChild(c);
-      };
+socketedScript :: String -> Int -> String -> String  -> String
+socketedScript h ldrop hf ef = [stringQuote|
+   <script>
+   (function(host, linesToDrop, handleMessage, handleMessageError) {
+      window.handleMessage = handleMessage;
+      window.handleMessageError = handleMessageError;
 
       var retryCount;
 
@@ -60,9 +52,32 @@ evalHtml opts@(SocketedOptions r _ _) = pack $ [stringQuote|
       };
 
       connect(0);
-   })(
+   })(|]
+   ++ intercalate "," ["'" ++ h ++ "'", show ldrop, hf, ef]
+   ++ [stringQuote|)</script>|]
+
+wrapHtml :: String -> String
+wrapHtml inner = [stringQuote|
+      <!DOCTYPE html><html><body>
    |]
-   ++ "'" ++ showHost opts ++ "', " ++ show r
+   ++ inner
    ++ [stringQuote|
-   )</script></body></html>
+      </body></html>
+   |]
+
+evalHtml :: SocketedOptions -> String
+evalHtml (SocketedOptions r p h) = wrapHtml $ socketedScript
+   (showWSHost h p)
+   r
+   [stringQuote|
+      function(event) {
+         eval(event.data);
+      }
+   |]
+   [stringQuote|
+      function(event, error) {
+         var c = document.createElement('div');
+         c.textContent = 'failed to eval: '+ event.data;
+         window.document.body.appendChild(c);
+      }
    |]

@@ -4,20 +4,18 @@ module Network.Socketed (
 
 import Conduit (
       ConduitM, MonadIO,
-      (.|), mapM_C, runConduit, sourceHandle, sinkList, takeExactlyC
+      (.|), mapM_C, runConduit, sinkList, takeExactlyC
    )
 import Data.Conduit.TMChan (TMChan, sinkTMChan, dupTMChan, sourceTMChan)
-import qualified Data.Conduit.Binary as CB
 
 import Control.Concurrent.Async (async)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMChan (newBroadcastTMChanIO)
 
 import Data.ByteString (ByteString)
+import Data.ByteString.Char8 (pack)
 import Data.ByteString.Lazy (fromStrict)
 import Data.Void (Void)
-
-import System.IO (stdin)
 
 import Network.HTTP.Types (status200)
 import Network.Wai (Application, responseLBS)
@@ -32,11 +30,8 @@ import Network.WebSockets (
       acceptRequest, defaultConnectionOptions, sendTextData
    )
 
-import Network.Socketed.Internal (SocketedOptions(..), showHost)
+import Network.Socketed.Internal (SocketedOptions(..), stdinLines)
 import Network.Socketed.Template (evalHtml)
-
-stdinLines :: MonadIO m => ConduitM a ByteString m ()
-stdinLines = sourceHandle stdin .| CB.lines
 
 sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
 sinkStdinToChan = (stdinLines .|) . flip sinkTMChan False
@@ -68,6 +63,5 @@ runSocketedServer opts = do
    rls <- replayedLines opts
    chan <- newBroadcastTMChanIO
    _ <- async . runConduit $ sinkStdinToChan chan
-   let app = socketedApp rls (evalHtml opts) chan
-   _ <- putStrLn $ showHost opts
+   let app = socketedApp rls (pack $ evalHtml opts) chan
    runSettings (serverSettings opts) app

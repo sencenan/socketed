@@ -5,6 +5,7 @@ import Control.Applicative (optional)
 import Data.Semigroup ((<>))
 import qualified Options.Applicative as Opt
 
+import Network.Socketed.Internal (withStdinPassthrough)
 import Network.Socketed.Application.Ficketed (
       FicketedOptions(..), runFicketedServer
    )
@@ -46,7 +47,7 @@ params = FicketedOptions
       <> Opt.metavar "STRING" )
 
 main :: IO ()
-main = Opt.execParser opts >>= runFicketedServer
+main =  Opt.execParser opts >>= withStdinPassthrough . runFicketedServer
    where
       opts = Opt.info (Opt.helper <*> params)
          (

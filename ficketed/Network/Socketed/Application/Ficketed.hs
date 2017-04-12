@@ -5,6 +5,7 @@ module Network.Socketed.Application.Ficketed (
    ) where
 
 import Data.ByteString (ByteString, isPrefixOf)
+import Data.ByteString.Char8 (pack, unpack)
 import Data.ByteString.Lazy (toStrict)
 import Data.Binary.Builder (
       fromByteString, toLazyByteString, putStringUtf8
@@ -19,7 +20,9 @@ import Network.Wai (
       Middleware, Response, StreamingBody,
       mapResponseHeaders, responseToStream, responseStream, rawPathInfo
    )
-import Network.Wai.Application.Static (defaultFileServerSettings, staticApp)
+import Network.Wai.Application.Static (
+      defaultFileServerSettings, staticApp, ssIndices
+   )
 import Network.Wai.Handler.Warp (run)
 
 import System.Directory (getCurrentDirectory)
@@ -27,13 +30,8 @@ import System.Directory (getCurrentDirectory)
 import Text.Blaze.Html5 (text)
 import Text.Blaze.Html.Renderer.String (renderHtml)
 
-data FicketedOptions = FicketedOptions {
-      dir :: Maybe String,
-      port :: Int,
-      host :: String,
-      wsPort :: Int,
-      wsHost :: String
-   }
+import Network.Socketed.Application.Ficketed.Internal (FicketedOptions(..))
+import Network.Socketed.Application.Ficketed.Template (refreshHtml)
 
 coerceHeaders :: Response -> Response
 coerceHeaders = mapResponseHeaders (map f)
@@ -42,14 +40,14 @@ coerceHeaders = mapResponseHeaders (map f)
       f ("Content-Type", _) = ("Content-Type", "text/html")
       f h = h
 
-rewriteHTML :: StreamingBody -> StreamingBody
-rewriteHTML sbody send flush
+rewriteHTML :: FicketedOptions -> ByteString -> StreamingBody -> StreamingBody
+rewriteHTML opts path sbody send flush
    = sbody send flush
-   >> send (fromByteString "<script>console.log('here')</script>")
+   >> send (fromByteString . pack . refreshHtml (unpack path) $ opts)
    >> flush
 
-rewriteText :: StreamingBody -> StreamingBody
-rewriteText sbody send flush
+rewriteText :: FicketedOptions -> ByteString -> StreamingBody -> StreamingBody
+rewriteText opts path sbody send flush
    = send (fromByteString "<pre>")
    >> sbody
       (send
@@ -61,14 +59,14 @@ rewriteText sbody send flush
          . toLazyByteString)
       flush
    >> send (fromByteString "</pre>")
-   >> send (fromByteString "<script>console.log('here')</script>")
+   >> send (fromByteString . pack .refreshHtml (unpack path) $ opts)
    >> flush
 
 htmlMimes :: [ByteString]
 htmlMimes = ["text/html", "text/javascipt"]
 
-wrap :: Middleware
-wrap app req respond = app req f where
+wrap :: FicketedOptions -> Middleware
+wrap opts app req respond = app req f where
    m = defaultMimeLookup . decodeUtf8 .rawPathInfo $ req
    f res =
       case () of
@@ -78,10 +76,17 @@ wrap app req respond = app req f where
                (s, hs, wb) = responseToStream . coerceHeaders $ res
                rewrite = if m `elem` htmlMimes then rewriteHTML else rewriteText
             in
-               wb $ respond . responseStream s hs . rewrite
+               wb
+                  $ respond
+                  . responseStream s hs
+                  . rewrite opts (rawPathInfo req)
          | otherwise -> respond res
 
 runFicketedServer :: FicketedOptions -> IO ()
-runFicketedServer (FicketedOptions d p _ _ _) = do
+runFicketedServer opts@(FicketedOptions d p _ _ _) = do
    pwd <- getCurrentDirectory
-   run p $ wrap $ staticApp (defaultFileServerSettings $ fromMaybe pwd d)
+   run p
+      $ wrap opts
+      $ staticApp (defaultFileServerSettings $ fromMaybe pwd d) {
+            ssIndices = [] -- disable auto index
+         }
