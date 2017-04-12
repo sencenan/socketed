@@ -32,7 +32,7 @@ import Network.WebSockets (
 
 import Network.Socketed.Internal (
       SocketedOptions(..),
-      stdinLines, waitTimeout, showWSHost
+      stdinLines, showWSHost, takeUntil2Empty
    )
 import Network.Socketed.Template (evalHtml)
 
@@ -40,7 +40,7 @@ sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
 sinkStdinToChan = (stdinLines .|) . flip sinkTMChan False
 
 serverSettings :: SocketedOptions -> Settings
-serverSettings (SocketedOptions _ p h) = setHost (read hoststr)
+serverSettings (SocketedOptions h p) = setHost (read hoststr)
    $ setPort p defaultSettings where hoststr = "Host \"" ++ h ++ "\""
 
 socketedApp :: [ByteString] -> ByteString -> TMChan ByteString -> Application
@@ -58,10 +58,9 @@ socketedApp rls html broadcastChan
          $ responseLBS status200 [] (fromStrict html)
 
 runSocketedServer :: SocketedOptions -> IO ()
-runSocketedServer opts@(SocketedOptions w p h) = do
+runSocketedServer opts@(SocketedOptions h p) = do
    putStrLn "Accepting replayed data: "
-   a <- async . runConduit $ stdinLines .| sinkList
-   rls <- waitTimeout a [] (w * 1000)
+   rls <- runConduit $ stdinLines .| takeUntil2Empty .| sinkList
    putStrLn "Replayed data: "
    mapM_ print rls
    putStrLn $ "\nStart streaming @ " ++ showWSHost h p
@@ -69,5 +68,5 @@ runSocketedServer opts@(SocketedOptions w p h) = do
    mirror <- atomically $ dupTMChan chan
    _ <- async . runConduit $ sinkStdinToChan chan
    _ <- async . runConduit $ sourceTMChan mirror .| mapM_C (putStrLn . unpack)
-   let app = socketedApp rls (pack $ evalHtml opts) chan
+   let app = socketedApp rls (pack $ evalHtml (length rls) opts) chan
    runSettings (serverSettings opts) app

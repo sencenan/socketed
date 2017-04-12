@@ -11,6 +11,8 @@ import Network.Socketed.Application.Ficketed (
       FicketedOptions(..), runFicketedServer
    )
 
+import System.IO (hFlush, stdout)
+
 params :: Opt.Parser FicketedOptions
 params = FicketedOptions
    <$> optional (
@@ -76,7 +78,8 @@ params = FicketedOptions
       <> Opt.metavar "COMMA SEPERATED LIST")
 
 main :: IO ()
-main =  Opt.execParser opts >>= withStdinPassthrough . runFicketedServer
+main = putStrLn "\n" >> hFlush stdout -- kick off socketed server
+      >> Opt.execParser opts >>= withStdinPassthrough . runFicketedServer
    where
       opts = Opt.info (Opt.helper <*> params)
          (

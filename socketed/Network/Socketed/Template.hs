@@ -65,8 +65,8 @@ wrapHtml inner = [stringQuote|
       </body></html>
    |]
 
-evalHtml :: SocketedOptions -> String
-evalHtml (SocketedOptions r p h) = wrapHtml $ socketedScript
+evalHtml :: Int -> SocketedOptions -> String
+evalHtml r (SocketedOptions h p) = wrapHtml $ socketedScript
    (showWSHost h p)
    r
    [stringQuote|
