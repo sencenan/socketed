@@ -7,7 +7,7 @@ import Network.Socketed.Template (socketedScript)
 import Network.Socketed.Application.Ficketed.Internal (FicketedOptions(..))
 
 refreshHtml :: String -> FicketedOptions -> String
-refreshHtml path (FicketedOptions _ _ _ wp wh) = socketedScript
+refreshHtml path (FicketedOptions _ _ _ wp wh _ _ _ _) = socketedScript
    (showWSHost wh wp)
    0
    (

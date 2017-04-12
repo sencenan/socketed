@@ -3,6 +3,7 @@ module Main where
 import Control.Applicative (optional)
 
 import Data.Semigroup ((<>))
+
 import qualified Options.Applicative as Opt
 
 import Network.Socketed.Internal (withStdinPassthrough)
@@ -44,7 +45,35 @@ params = FicketedOptions
       <> Opt.help "host of the socketed server"
       <> Opt.showDefault
       <> Opt.value "0.0.0.0"
-      <> Opt.metavar "STRING" )
+      <> Opt.metavar "STRING")
+   <*> Opt.strOption
+      ( Opt.long "skipedMimes"
+      <> Opt.short 'x'
+      <> Opt.help "skip update script for mime types listed in this list"
+      <> Opt.showDefault
+      <> Opt.value "text/css"
+      <> Opt.metavar "COMMA SEPERATED LIST")
+   <*> Opt.strOption
+      ( Opt.long "extraMimes"
+      <> Opt.short 'e'
+      <> Opt.help "additional mime types to be subject for refreshing"
+      <> Opt.showDefault
+      <> Opt.value "application/json,application/x-sh"
+      <> Opt.metavar "COMMA SEPERATED LIST")
+   <*> Opt.strOption
+      ( Opt.long "htmlMimes"
+      <> Opt.short 'l'
+      <> Opt.help "mime types that will not have escape html performed"
+      <> Opt.showDefault
+      <> Opt.value "text/html,text/javascipt"
+      <> Opt.metavar "COMMA SEPERATED LIST")
+   <*> Opt.strOption
+      ( Opt.long "textExts"
+      <> Opt.short 't'
+      <> Opt.help "additional file extensions to be treated as text/plain"
+      <> Opt.showDefault
+      <> Opt.value "md,yaml"
+      <> Opt.metavar "COMMA SEPERATED LIST")
 
 main :: IO ()
 main =  Opt.execParser opts >>= withStdinPassthrough . runFicketedServer

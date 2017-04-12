@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.Socketed.Application.Ficketed (
-      FicketedOptions(..), runFicketedServer
+      FicketedOptions(..), runFicketedServer, mimeLookup
    ) where
 
 import Data.ByteString (ByteString, isPrefixOf)
@@ -10,10 +10,16 @@ import Data.ByteString.Lazy (toStrict)
 import Data.Binary.Builder (
       fromByteString, toLazyByteString, putStringUtf8
    )
+import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import Data.Maybe (fromMaybe)
+import Data.Map.Strict (insert)
+import Data.String.Utils (split)
 
-import Network.Mime (defaultMimeLookup)
+import Network.Mime (
+      FileName, MimeType,
+      defaultMimeLookup, defaultMimeMap, mimeByExt
+   )
 import Network.HTTP.Types (Header)
 
 import Network.Wai (
@@ -62,19 +68,31 @@ rewriteText opts path sbody send flush
    >> send (fromByteString . pack .refreshHtml (unpack path) $ opts)
    >> flush
 
-htmlMimes :: [ByteString]
-htmlMimes = ["text/html", "text/javascipt"]
+mimeLookup :: FicketedOptions -> FileName -> MimeType
+mimeLookup opts fn = mimeByExt mimeMap (defaultMimeLookup fn) fn
+   where
+      f m e = insert (T.pack e) "text/plain" m
+      mimeMap = foldl f defaultMimeMap $ split "," $ textExts opts
+
+shouldRewrite :: FicketedOptions -> MimeType -> Bool
+shouldRewrite (FicketedOptions _ _ _ _ _ x e _ _) m =
+   ("text/" `isPrefixOf` m || m `elem` extra)
+   && unpack m `notElem` skipped
+      where
+         skipped = split "," x
+         extra = map pack $ split "," e
 
 wrap :: FicketedOptions -> Middleware
 wrap opts app req respond = app req f where
-   m = defaultMimeLookup . decodeUtf8 .rawPathInfo $ req
+   m = mimeLookup opts . decodeUtf8 . rawPathInfo $ req
    f res =
       case () of
       _
-         | "text/" `isPrefixOf` m ->
+         | shouldRewrite opts m ->
             let
                (s, hs, wb) = responseToStream . coerceHeaders $ res
-               rewrite = if m `elem` htmlMimes then rewriteHTML else rewriteText
+               hMimes = map pack $ split "," (htmlMimes opts)
+               rewrite = if m `elem` hMimes then rewriteHTML else rewriteText
             in
                wb
                   $ respond
@@ -83,7 +101,7 @@ wrap opts app req respond = app req f where
          | otherwise -> respond res
 
 runFicketedServer :: FicketedOptions -> IO ()
-runFicketedServer opts@(FicketedOptions d p _ _ _) = do
+runFicketedServer opts@(FicketedOptions d p _ _ _ _ _ _ _) = do
    pwd <- getCurrentDirectory
    run p
       $ wrap opts

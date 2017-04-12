@@ -5,5 +5,9 @@ data FicketedOptions = FicketedOptions {
       port :: Int,
       host :: String,
       wsPort :: Int,
-      wsHost :: String
+      wsHost :: String,
+      skippedMimes :: String,
+      extraMimes :: String,
+      htmlMimes :: String,
+      textExts :: String
    }
