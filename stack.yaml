@@ -3,6 +3,7 @@ extra-package-dbs: []
 packages:
 - ./socketed
 - ./ficketed
+- ./plocketed
 extra-deps:
 - blaze-html-0.9.0.1
 - blaze-markup-0.8.0.0

@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Network.Socketed.Internal where
 
 import Conduit (
@@ -5,9 +7,12 @@ import Conduit (
       (.|), runConduit, sourceHandle, stdoutC
    )
 
-import Control.Concurrent.Async (async, wait)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (Async, async, cancel, race, wait)
+import Control.Exception (AsyncException(..), catch)
 
 import Data.ByteString (ByteString)
+import Data.Either.Utils (fromRight)
 import qualified Data.Conduit.Binary as CB (lines)
 
 import Language.Haskell.TH (stringE)
@@ -16,7 +21,7 @@ import Language.Haskell.TH.Quote (QuasiQuoter(..))
 import System.IO (stdin)
 
 data SocketedOptions = SocketedOptions {
-      replayAmount :: Int,
+      initWait :: Int,
       port :: Int,
       host :: String
    }
@@ -43,3 +48,13 @@ stringQuote = QuasiQuoter {
    quoteType = undefined,
    quoteDec = undefined
 }
+
+waitTimeout :: forall a . Async a -> a -> Int -> IO a
+waitTimeout task def time =
+   let
+      left = threadDelay time >> cancel task
+      right = wait task
+      hdl :: AsyncException -> IO a
+      hdl _ = return def
+   in
+      fmap fromRight (race left right) `catch` hdl

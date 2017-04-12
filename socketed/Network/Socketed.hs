@@ -4,7 +4,7 @@ module Network.Socketed (
 
 import Conduit (
       ConduitM, MonadIO,
-      (.|), mapM_C, runConduit, sinkList, takeExactlyC
+      (.|), mapM_C, runConduit, sinkList
    )
 import Data.Conduit.TMChan (TMChan, sinkTMChan, dupTMChan, sourceTMChan)
 
@@ -13,7 +13,7 @@ import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMChan (newBroadcastTMChanIO)
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (pack)
+import Data.ByteString.Char8 (pack, unpack)
 import Data.ByteString.Lazy (fromStrict)
 import Data.Void (Void)
 
@@ -30,15 +30,14 @@ import Network.WebSockets (
       acceptRequest, defaultConnectionOptions, sendTextData
    )
 
-import Network.Socketed.Internal (SocketedOptions(..), stdinLines)
+import Network.Socketed.Internal (
+      SocketedOptions(..),
+      stdinLines, waitTimeout, showWSHost
+   )
 import Network.Socketed.Template (evalHtml)
 
 sinkStdinToChan :: MonadIO m => TMChan ByteString -> ConduitM a Void m ()
 sinkStdinToChan = (stdinLines .|) . flip sinkTMChan False
-
-replayedLines :: SocketedOptions -> IO [ByteString]
-replayedLines (SocketedOptions r _ _) = runConduit
-   $ stdinLines .| takeExactlyC r sinkList
 
 serverSettings :: SocketedOptions -> Settings
 serverSettings (SocketedOptions _ p h) = setHost (read hoststr)
@@ -59,9 +58,16 @@ socketedApp rls html broadcastChan
          $ responseLBS status200 [] (fromStrict html)
 
 runSocketedServer :: SocketedOptions -> IO ()
-runSocketedServer opts = do
-   rls <- replayedLines opts
+runSocketedServer opts@(SocketedOptions w p h) = do
+   putStrLn "Accepting replayed data: "
+   a <- async . runConduit $ stdinLines .| sinkList
+   rls <- waitTimeout a [] (w * 1000)
+   putStrLn "Replayed data: "
+   mapM_ print rls
+   putStrLn $ "\nStart streaming @ " ++ showWSHost h p
    chan <- newBroadcastTMChanIO
+   mirror <- atomically $ dupTMChan chan
    _ <- async . runConduit $ sinkStdinToChan chan
+   _ <- async . runConduit $ sourceTMChan mirror .| mapM_C (putStrLn . unpack)
    let app = socketedApp rls (pack $ evalHtml opts) chan
    runSettings (serverSettings opts) app

@@ -33,13 +33,13 @@ socketedScript h ldrop hf ef = [stringQuote|
             } else {
                setTimeout(function() {
                   console.log('reconnecting...');
-                  connect(l);
+                  connect(linesToDrop);
                }, 2000);
             }
          };
 
          socket.onmessage = function(event) {
-            if (++lineDropped > linesToDrop) {
+            if (++lineDropped > l) {
                try {
                   window.handleMessage(event);
                } catch(error) {

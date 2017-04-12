@@ -8,11 +8,11 @@ import Network.Socketed (SocketedOptions(..), runSocketedServer)
 params :: Opt.Parser SocketedOptions
 params = SocketedOptions
    <$> Opt.option Opt.auto
-      ( Opt.long "replay"
-      <> Opt.short 'l'
-      <> Opt.help "number of lines to replay on client connect"
+      ( Opt.long "wait"
+      <> Opt.short 'w'
+      <> Opt.help "time in milliseconds to wait for replayed inputs"
       <> Opt.showDefault
-      <> Opt.value 0
+      <> Opt.value 500
       <> Opt.metavar "INT" )
    <*> Opt.option Opt.auto
       ( Opt.long "port"
