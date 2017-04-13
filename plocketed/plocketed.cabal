@@ -1,5 +1,5 @@
 name: plocketed
-version: 0.1.0.0
+version: 0.1.0.1
 
 synopsis: plot data from stdin through socketed
 description: plot data from stdin through socketed

@@ -122,9 +122,9 @@ script.onload = function() {
 
    window.handleMessage = function(e) {
       var
-         vals = e.data.split(' ').map(x => x.trim()).map(x => parseInt(x, 10)),
+         vals = e.data.split(' ').map(x => x.trim()),
          key = vals[0],
-         val = vals[1];
+         val = parseInt(vals[1], 10);
 
       if (!(key in dataMap)) {
          dataMap[key] = {
