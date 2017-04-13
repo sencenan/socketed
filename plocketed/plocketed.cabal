@@ -22,7 +22,5 @@ executable plocketed
     optparse-applicative >= 0.13.2.0
   ghc-options: -threaded
   other-modules:
-    Network.Socketed.Application.Plocketed
-
--- Network.Socketed.Application.Plocketed.Internal,
--- Network.Socketed.Application.Plocketed.Template
+    Network.Socketed.Application.Plocketed.Internal,
+    Network.Socketed.Application.Plocketed.Template
