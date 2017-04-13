@@ -2,6 +2,11 @@
 
 This program works with `socketed` and creates stacked line graph in browser from data taken from stdin.
 
+## Install
+```
+cabal install socketed plocketed
+```
+
 ## Data Input Format
 
 ```
