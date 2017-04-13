@@ -28,6 +28,12 @@ script.onload = function() {
    var legend = document.createElement('div');
    document.body.appendChild(legend);
 
+   var
+      ctx = canvas.getContext('2d'),
+      seq = 0,
+      dataMap = {}, /* data key to data set */
+      chart;
+
    var colors = [
       '#00ffff', '#f0ffff', '#f5f5dc', '#000000', '#0000ff', '#a52a2a',
       '#00ffff', '#00008b', '#008b8b', '#a9a9a9', '#006400', '#bdb76b',
@@ -66,11 +72,51 @@ script.onload = function() {
       };
    };
 
-   var
-      ctx = canvas.getContext('2d'),
-      seq = 0,
-      dataMap = {}, /* data key to data set */
-      chart;
+   var mkChart = function() {
+      if (chart) {
+         chart.clear();
+         chart.destroy();
+      }
+
+      seq = 0;
+      var ds = Object.keys(dataMap)
+         .map(k => dataMap[k])
+         .sort((a, b) => a.idx - b.idx)
+         .map(set => {
+
+            /* trim to the last element */
+            set.data = [set.data[set.data.length - 1]];
+
+            return Object.assign(
+               mkDataSet(set.key),
+               { data: set.data }
+            );
+         });
+
+      console.log(JSON.stringify(ds));
+
+      chart
+         = window.chart
+         = new Chart(ctx).Line(
+            {
+               labels: [seq],
+               datasets: ds
+            },
+            {
+               animationSteps: 15,
+               legendTemplate: '<table><tr>'
+                   +'<% for (var i=0; i<datasets.length; i++) { %>'
+                   +'<td><div class=\"boxx\" '
+                     + 'style=\"background-color:<%=datasets[i].fillColor %>\">'
+                   +'<% if (datasets[i].label) '
+                     + '{ %> <%= datasets[i].label %> <% } %></div></td>'
+                   +'<% } %>'
+                   +'</tr></table>'
+            }
+         );
+
+      legend.innerHTML = chart.generateLegend();
+   };
 
    window.dataMap = dataMap;
 
@@ -78,10 +124,7 @@ script.onload = function() {
       var
          vals = e.data.split(' ').map(x => x.trim()).map(x => parseInt(x, 10)),
          key = vals[0],
-         val = vals[1],
-         dataSetIdx,
-         newPoints,
-         isNew = false;
+         val = vals[1];
 
       if (!(key in dataMap)) {
          dataMap[key] = {
@@ -90,55 +133,23 @@ script.onload = function() {
             data: [val]
          };
 
-         if (!chart) {
-            /* first data line */
-            isNew = true;
+         mkChart();
+      } else {
+         var newPoints = Object.keys(dataMap)
+            .map(k => dataMap[k])
+            .sort((a, b) => a.idx - b.idx)
+            .map(set => {
+               if (set.key === key) {
+                  set.data.push(val);
+               } else {
+                  set.data.push(set.data[set.data.length - 1]);
+               }
 
-            chart
-               = window.chart
-               = new Chart(ctx).Line(
-                  {
-                     labels: [seq],
-                     datasets: [
-                        Object.assign(
-                           mkDataSet(key),
-                           { data: dataMap[key].data }
-                        )
-                     ]
-                  },
-                  {
-                     animationSteps: 15,
-                     legendTemplate: '<table><tr>'
-                         +'<% for (var i=0; i<datasets.length; i++) { %>'
-                         +'<td><div class=\"boxx\" style=\"background-color:<%=datasets[i].fillColor %>\">'
-                         +'<% if (datasets[i].label) { %> <%= datasets[i].label %> <% } %></div></td>'
-                         +'<% } %>'
-                         +'</tr></table>'
-                  }
-               );
-         } else {
-            /* new data line */
-            chart.datasets.push(mkDataSet(key));
-            chart.update();
-         }
+               return set.data[set.data.length - 1];
+            });
 
-         legend.innerHTML = chart.generateLegend();
+         chart.addData(newPoints, ++seq);
       }
-
-      newPoints = Object.keys(dataMap)
-         .map(k => dataMap[k])
-         .sort((a, b) => a.idx - b.idx)
-         .map(set => {
-            if (set.key === key) {
-               set.data.push(val);
-            } else {
-               set.data.push(set.data[set.data.length - 1]);
-            }
-
-            return set.data[set.data.length - 1];
-         });
-
-      isNew || chart.addData(newPoints, ++seq);
 
       if (seq > maxDataAmount) {
          chart.removeData();
