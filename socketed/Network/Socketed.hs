@@ -58,15 +58,16 @@ socketedApp rls html broadcastChan
          $ responseLBS status200 [] (fromStrict html)
 
 runSocketedServer :: SocketedOptions -> IO ()
-runSocketedServer opts@(SocketedOptions h p) = do
-   putStrLn "Accepting replayed data: "
-   rls <- runConduit $ stdinLines .| takeUntil2Empty .| sinkList
-   putStrLn "Replayed data: "
-   mapM_ print rls
-   putStrLn $ "\nStart streaming @ " ++ showWSHost h p
-   chan <- newBroadcastTMChanIO
-   mirror <- atomically $ dupTMChan chan
-   _ <- async . runConduit $ sinkStdinToChan chan
-   _ <- async . runConduit $ sourceTMChan mirror .| mapM_C (putStrLn . unpack)
-   let app = socketedApp rls (pack $ evalHtml (length rls) opts) chan
-   runSettings (serverSettings opts) app
+runSocketedServer opts@(SocketedOptions h p) =
+   putStrLn "Accepting replayed data: " >>
+   runConduit (stdinLines .| takeUntil2Empty .| sinkList) >>= \rls ->
+   putStrLn "Replayed data: " >>
+   mapM_ print rls >>
+   putStrLn ("\nStart streaming @ " ++ showWSHost h p) >>
+   newBroadcastTMChanIO >>= \chan ->
+   atomically (dupTMChan chan) >>= \mirror ->
+   async (runConduit $ sinkStdinToChan chan) >>
+   async (runConduit $ sourceTMChan mirror .| mapM_C (putStrLn . unpack)) >>
+   runSettings
+      (serverSettings opts)
+      (socketedApp rls (pack $ evalHtml (length rls) opts) chan)
